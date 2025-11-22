@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
+
+*{
+    box-sizing: border-box;
+    font-family: 'Montserrat', sans-serif;
+}
+
+html, body {
+    background-color: var(--bg);
+    color: var(--text);
+    margin: 0;
+}
+
+body{
+    display: flex;
+}
+
+/* Светлая тема */
+:root {
+  --bg: #ffffff;
+  --text: #111111;
+  --text-secondary: #555;
+  --text-muted: #777;
+
+  --card-bg: #ffffff;
+  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+
+  --divider: #e5e7eb;
+
+  --btn-bg: #f9f9f9;
+  --btn-bg-hover: #e5e7eb;
+  --btn-text: #111;
+  --btn-border: #ccc;
+
+  --toggle-icon: #111;
+
+  --accent: #4f46e5;
+}
+
+/* Тёмная тема */
+[data-theme="dark"] {
+  --bg: #121212;
+  --text: #e0e0e0;
+  --text-secondary: #bbbbbb;
+  --text-muted: #999;
+
+  --card-bg: #1a1a1a;
+  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.55);
+
+  --divider: #2a2a2a;
+
+  --btn-bg: #2a2a2a;
+  --btn-bg-hover: #383838;
+  --btn-text: #e0e0e0;
+  --btn-border: #444;
+
+  --toggle-icon: #eaeaea;
+
+  --accent: #6b5cff;
+}
