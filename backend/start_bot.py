@@ -1,11 +1,14 @@
 import os
 import telebot
 from telebot import types
+from dotenv import load_dotenv
 
 
-API_TOKEN = '8230538624:AAE93RQ4WluRSljZd7851JWpn1uZSJen1hY'
+load_dotenv()
+API_TOKEN = os.getenv("API_TOKEN")
+
+
 bot = telebot.TeleBot(API_TOKEN)
-
 
 @bot.message_handler(content_types=['document'])
 def handle_docs(message):
