@@ -49,7 +49,9 @@ export function generateWeekConfig(wayTraveled: number[], type?: string) {
     return { chartData, options };
 }
 
-export function generateWeekBarConfig(wayTraveled: number[], type?: string, theme?: Theme) {
+export function generateWeekBarConfig(wayTraveled: number[] | null, type?: string, theme?: Theme) {
+    if (wayTraveled === null) return;
+        
     const daysCount = wayTraveled.length;
     let labels = Array.from({ length: daysCount }, (_, i) => `${i + 1}`);
     if (type === 'Неделя') {

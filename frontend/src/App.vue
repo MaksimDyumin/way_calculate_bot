@@ -7,7 +7,6 @@ import { ThemeEnum } from '@/global.types'
 
 const wayTraveledStore = useWayTravelStore();
 onMounted(() => {
-  console.log(document.body.getAttribute("data-theme"));
   if (localStorage.getItem('data-theme') === null) {
     localStorage.setItem('data-theme', ThemeEnum.LIGHT);
   }

@@ -1,48 +1,82 @@
 <script setup lang="ts">
 import DayProgressBar from '@/components/DayProgressBar.vue';
 import WayChart from '@/components/WayChart.vue';
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import type { Ref } from 'vue';
 import type { Interval } from '@/pages/pages.types.ts';
+import { useWayTravelStore } from '@/stores/wayTravel';
+import type { AverageMaxSpeed, DayProgress } from '@/global.types';
 
-const weekTravel: number[] = [4, 6, 7, 3, 10, 12, 8];
-const mounthTravel: number[] = [4, 6, 7, 3, 10, 12, 8, 4, 6, 7, 3, 10, 12, 8, 4, 6, 7, 3, 10, 12, 8, 4, 6, 7, 3, 10, 12, 8];
-const yearTravel: number[] = [4, 6, 7, 3, 10, 12, 4, 6, 7, 3, 10, 12];
+const loadingL = ref(false);
+const wayTraveledStore = useWayTravelStore()
+
+const weekTravel: Ref<number[]> = ref([0])
+const mounthTravel: Ref<number[]> = ref([0])
+const yearTravel: Ref<number[]> = ref([0])
+const todayProgress: Ref<DayProgress> = ref({ yesterday: 0, today: 0 })
+const averageMaxSpeed: Ref<AverageMaxSpeed> = ref({
+  today: {
+    average: 12,
+    max: 45
+  },
+  week: {
+    average: 15,
+    max: 50
+  },
+  mouth: {
+    average: 14,
+    max: 48
+  },
+  year: {
+    average: 13,
+    max: 47
+  },
+  all_time: {
+    average: 16,
+    max: 55
+  },
+})
+
+onMounted(async () => {
+  await wayTraveledStore.getDateTravelInfo()
+
+  weekTravel.value = wayTraveledStore.travelData.week_travel.data
+  mounthTravel.value = wayTraveledStore.travelData.mounth_travel.data
+  yearTravel.value = wayTraveledStore.travelData.year_travel.data
+  todayProgress.value = wayTraveledStore.travelData.day_progress
+  averageMaxSpeed.value = wayTraveledStore.travelData.average_max_speed
+
+  loadingL.value = true;
+})
 
 const intervals: Interval[] = ['Сегодня', 'Неделя', 'Месяц', 'Год', 'Все время'];
 const speedInterval: Ref<Interval> = ref('Сегодня');
 const isSwitch: Ref<boolean> = ref(true);
 
 const speedData: Record<Interval, { average: number; max: number }> = {
-  Сегодня: { average: 20, max: 25 },
-  Неделя: { average: 18, max: 27 },
-  Месяц: { average: 22, max: 30 },
-  Год: { average: 19, max: 28 },
-  'Все время': { average: 115, max: 443 },
+  Сегодня: {average: averageMaxSpeed.value.today.average, max: averageMaxSpeed.value.today.max},
+  Неделя: {average: averageMaxSpeed.value.week.average, max: averageMaxSpeed.value.week.max},
+  Месяц: {average: averageMaxSpeed.value.mouth.average, max: averageMaxSpeed.value.mouth.max},
+  Год: {average: averageMaxSpeed.value.year.average, max: averageMaxSpeed.value.year.max},
+  'Все время': {average: averageMaxSpeed.value.all_time.average, max: averageMaxSpeed.value.all_time.max},
 };
 
 // --- Функция смены интервала
-async function setInterval(interval: Interval) {
+async function setDateInterval(interval: Interval) {
   isSwitch.value = false;
   speedInterval.value = interval;
   await new Promise((res) => setTimeout(res, 100));
   isSwitch.value = true;
 }
-
-// --- Определение темы
 </script>
 
 <template>
-  <div class="home-container">
-    <day-progress-bar :yesterday="9" :today="12" />
+  <div v-if="loadingL" class="home-container">
+    <day-progress-bar :yesterday="todayProgress.yesterday" :today="todayProgress.today" />
 
     <div class="interval-toggle">
-      <button
-        v-for="interval in intervals"
-        :key="interval"
-        :class="{ active: speedInterval === interval }"
-        @click="setInterval(interval)"
-      >
+      <button v-for="interval in intervals" :key="interval" :class="{ active: speedInterval === interval }"
+        @click="setDateInterval(interval)">
         {{ interval }}
       </button>
     </div>
@@ -71,14 +105,19 @@ async function setInterval(interval: Interval) {
 
 <style lang="scss" scoped>
 /* ------------------ АНИМАЦИЯ ------------------ */
-.fade-enter-active, .fade-leave-active {
+.fade-enter-active,
+.fade-leave-active {
   transition: opacity 0.4s, transform 0.4s;
 }
-.fade-enter-from, .fade-leave-to {
+
+.fade-enter-from,
+.fade-leave-to {
   opacity: 0;
   transform: translateY(-10px);
 }
-.fade-enter-to, .fade-leave-from {
+
+.fade-enter-to,
+.fade-leave-from {
   opacity: 1;
   transform: translateY(0);
 }
@@ -102,6 +141,7 @@ async function setInterval(interval: Interval) {
   transition: 0.3s;
   cursor: pointer;
 }
+
 .theme-switch:hover {
   background: var(--btn-bg-hover);
 }
