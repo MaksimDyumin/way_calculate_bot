@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import DayProgressBar from '@/components/DayProgressBar.vue';
 import WayChart from '@/components/WayChart.vue';
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, reactive } from 'vue';
 import type { Ref } from 'vue';
 import type { Interval } from '@/pages/pages.types.ts';
 import { useWayTravelStore } from '@/stores/wayTravel';
@@ -16,26 +16,60 @@ const yearTravel: Ref<number[]> = ref([0])
 const todayProgress: Ref<DayProgress> = ref({ yesterday: 0, today: 0 })
 const averageMaxSpeed: Ref<AverageMaxSpeed> = ref({
   today: {
-    average: 12,
-    max: 45
+    average: [55],
+    max: [55]
   },
   week: {
-    average: 15,
-    max: 50
+    average: [55],
+    max: [55]
   },
   mouth: {
-    average: 14,
-    max: 48
+    average: [55],
+    max: [55]
   },
   year: {
-    average: 13,
-    max: 47
+    average: [55],
+    max: [55]
   },
   all_time: {
-    average: 16,
-    max: 55
+    average: [55],
+    max: [55]
   },
 })
+const speedData = computed(() => {
+  const d = averageMaxSpeed.value;
+
+  const avg = (arr: number[]) =>{
+    return arr && arr.length
+      ? Number((arr.reduce((p, c) => p + c, 0) / arr.length).toFixed(1))
+      : 0;
+  }
+    
+
+  return {
+    Сегодня: { 
+      average: avg(d?.today?.average ?? []),
+      max: avg(d?.today?.max ?? [])
+    },
+    Неделя: { 
+      average: avg(d?.week?.average ?? []),
+      max: avg(d?.week?.max ?? [])
+    },
+    Месяц: { 
+      average: avg(d?.mouth?.average ?? []),
+      max: avg(d?.mouth?.max ?? [])
+    },
+    Год: { 
+      average: avg(d?.year?.average ?? []),
+      max: avg(d?.year?.max ?? [])
+    },
+    'Все время': {
+      average: avg(d?.all_time?.average ?? []),
+      max: avg(d?.all_time?.max ?? [])
+    },
+  }
+})
+
 
 onMounted(async () => {
   await wayTraveledStore.getDateTravelInfo()
@@ -45,6 +79,7 @@ onMounted(async () => {
   yearTravel.value = wayTraveledStore.travelData.year_travel.data
   todayProgress.value = wayTraveledStore.travelData.day_progress
   averageMaxSpeed.value = wayTraveledStore.travelData.average_max_speed
+  console.log(averageMaxSpeed.value)
 
   loadingL.value = true;
 })
@@ -53,14 +88,6 @@ const intervals: Interval[] = ['Сегодня', 'Неделя', 'Месяц', '
 const speedInterval: Ref<Interval> = ref('Сегодня');
 const isSwitch: Ref<boolean> = ref(true);
 
-const speedData: Record<Interval, { average: number; max: number }> = {
-  Сегодня: {average: averageMaxSpeed.value.today.average, max: averageMaxSpeed.value.today.max},
-  Неделя: {average: averageMaxSpeed.value.week.average, max: averageMaxSpeed.value.week.max},
-  Месяц: {average: averageMaxSpeed.value.mouth.average, max: averageMaxSpeed.value.mouth.max},
-  Год: {average: averageMaxSpeed.value.year.average, max: averageMaxSpeed.value.year.max},
-  'Все время': {average: averageMaxSpeed.value.all_time.average, max: averageMaxSpeed.value.all_time.max},
-};
-
 // --- Функция смены интервала
 async function setDateInterval(interval: Interval) {
   isSwitch.value = false;
@@ -68,6 +95,7 @@ async function setDateInterval(interval: Interval) {
   await new Promise((res) => setTimeout(res, 100));
   isSwitch.value = true;
 }
+
 </script>
 
 <template>
@@ -91,8 +119,8 @@ async function setDateInterval(interval: Interval) {
       <Transition name="fade" mode="out-in">
         <div v-if="isSwitch" class="speed-row speed-body">
           <h3>{{ speedInterval }}</h3>
-          <span>{{ speedData[speedInterval].average }} км/ч</span>
-          <span>{{ speedData[speedInterval].max }} км/ч</span>
+          <span>{{ speedData[speedInterval]?.average }} км/ч</span>
+          <span>{{ speedData[speedInterval]?.max }} км/ч</span>
         </div>
       </Transition>
     </div>

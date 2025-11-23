@@ -2,6 +2,7 @@ import os
 import telebot
 from telebot import types
 from dotenv import load_dotenv
+import requests
 
 
 load_dotenv()
@@ -20,12 +21,10 @@ def handle_docs(message):
 
     # скачиваем файл
     downloaded_file = bot.download_file(file_info.file_path)
-
-
-    save_path = os.path.join("data", 'data.json')
-    # например, сохранить файл
-    with open(save_path, "wb") as new_file:
-        new_file.write(downloaded_file)
+    headers = {"Content-Type": "application/json"}
+    
+    response = requests.post(url='http://127.0.0.1:5000/import', data=downloaded_file, headers=headers, timeout=30)
+    # if response.status_code == ''
 
     bot.reply_to(message, "Файл получен!")
 
@@ -35,5 +34,6 @@ def start(message):
     btn = types.MenuButtonWebApp("web_app", text="Открыть WebApp", web_app=web_app)
     
     bot.set_chat_menu_button(chat_id=None, menu_button=btn)
+    bot.send_message(message.chat.id, "Добро пожаловать! Нажмите на кнопку ниже, чтобы открыть WebApp.")
 
 bot.infinity_polling(5)

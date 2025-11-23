@@ -12,23 +12,23 @@ export type DayProgress = {
 
 export type AverageMaxSpeed = {
     today: {
-        average: number,
-        max: number
+        average: number[],
+        max: number[]
     },
     week: {
-        average: number,
-        max: number
+        average: number[],
+        max: number[]
     },
     mouth: {
-        average: number,
-        max: number
+        average: number[],
+        max: number[]
     },
     year: {
-        average: number,
-        max: number
+        average: number[],
+        max: number[]
     },
     all_time: {
-        average: number,
-        max: number
+        average: number[],
+        max: number[]
     },
 }
