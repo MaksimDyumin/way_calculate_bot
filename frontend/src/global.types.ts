@@ -19,7 +19,7 @@ export type AverageMaxSpeed = {
         average: number[],
         max: number[]
     },
-    month: {
+    mouth: {
         average: number[],
         max: number[]
     },
@@ -27,8 +27,36 @@ export type AverageMaxSpeed = {
         average: number[],
         max: number[]
     },
-    all_time: {
+    alltime: {
         average: number[],
         max: number[]
     },
 }
+
+export type IntervalTravel = {
+    data: Array<number>
+    total: number
+}
+
+export type WeekTravel = IntervalTravel & {
+    end_week_data: string
+    start_week_data:string
+}
+
+export type MounthTravel = IntervalTravel & {
+    end_mounth_data: string
+    start_mounth_data: string
+}
+
+export type YearTravel = IntervalTravel & {
+    end_year_data: string
+    start_year_data: string
+}
+
+export type YearsTravel = IntervalTravel & {
+    data: Array<number>
+    years: Array<number>
+    total: number
+}
+
+export type IntervalTravelTypes = WeekTravel | MounthTravel | YearTravel | YearsTravel;

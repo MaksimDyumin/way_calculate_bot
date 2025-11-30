@@ -5,54 +5,57 @@ import { ref, onMounted, computed, nextTick } from 'vue';
 import type { Ref } from 'vue';
 import type { Interval } from '@/pages/pages.types.ts';
 import { useWayTravelStore } from '@/stores/wayTravel';
-import type { AverageMaxSpeed, DayProgress } from '@/global.types';
+import type { AverageMaxSpeed, DayProgress, WeekTravel, MounthTravel, YearTravel, YearsTravel } from '@/global.types';
 
 const isLoading = ref(false);
 const wayTraveledStore = useWayTravelStore();
 
 // --- Исправленные названия
-const weekTravel = ref<number[]>([]);
-const monthTravel = ref<number[]>([]);
-const yearTravel = ref<number[]>([]);
+const weekTravel = ref<WeekTravel>({} as WeekTravel);
+const monthTravel = ref<MounthTravel>({} as MounthTravel);
+const yearTravel = ref<YearTravel>({} as YearTravel);
+const yearsTravel = ref<YearsTravel>({} as YearsTravel);
 const todayProgress = ref<DayProgress>({ yesterday: 0, today: 0 });
 
 // --- Исправлен ключ month вместо mouth
 const averageMaxSpeed = ref<AverageMaxSpeed>({
   today: { average: [55], max: [55] },
   week: { average: [55], max: [55] },
-  month: { average: [55], max: [55] },
+  mouth: { average: [55], max: [55] },
   year: { average: [55], max: [55] },
-  all_time: { average: [55], max: [55] },
+  alltime: { average: [55], max: [55] },
 });
+const summary = ref<any>({});
 
 // --- чистая функция среднего
 const avg = (arr: number[]) =>
   arr?.length ? Number((arr.reduce((p, c) => p + c, 0) / arr.length).toFixed(1)) : 0;
 
+  
 // --- улучшена структура расчётов speedData
 const speedData = computed(() => {
   const d = averageMaxSpeed.value;
-
   return {
     Сегодня: {
-      average: avg(d.today.average),
-      max: avg(d.today.max)
+      average: d.today.average,
+      max: d.today.max
     },
     Неделя: {
-      average: avg(d.week.average),
-      max: avg(d.week.max)
+      average: d.week.average,
+      max: d.week.max
     },
+    
     Месяц: {
-      average: avg(d.month.average),
-      max: avg(d.month.max)
+      average: d.mouth.average,
+      max: d.mouth.max
     },
     Год: {
-      average: avg(d.year.average),
-      max: avg(d.year.max)
+      average: d.year.average,
+      max: d.year.max
     },
     'Все время': {
-      average: avg(d.all_time.average),
-      max: avg(d.all_time.max)
+      average: d.alltime.average,
+      max: d.alltime.max
     }
   };
 });
@@ -60,13 +63,14 @@ const speedData = computed(() => {
 // --- загрузка данных
 onMounted(async () => {
   await wayTraveledStore.getDateTravelInfo();
-
   const data = wayTraveledStore.travelData;
 
-  weekTravel.value = data.week_travel.data;
-  monthTravel.value = data.month_travel.data;
-  yearTravel.value = data.year_travel.data;
+  weekTravel.value = data.week_travel;
+  monthTravel.value = data.mounth_travel; 
+  yearTravel.value = data.year_travel;
+  yearsTravel.value = data.years_travel
   todayProgress.value = data.day_progress;
+  summary.value = data.summary;
   averageMaxSpeed.value = data.average_max_speed;
 
   isLoading.value = true;
@@ -86,22 +90,23 @@ async function setDateInterval(interval: Interval) {
 
   isSwitch.value = true;
 }
+
+const distanceData = computed(() => ({
+  Сегодня: summary.value.today?.distance_km ?? 0,
+  Неделя: summary.value.week?.distance_km ?? 0,
+  Месяц: summary.value.month?.distance_km ?? 0,
+  Год: summary.value.year?.distance_km ?? 0,
+  'Все время': summary.value.alltime?.distance_km ?? 0
+}));
 </script>
 
 <template>
   <div v-if="isLoading" class="home-container">
-    <day-progress-bar
-      :yesterday="todayProgress.yesterday"
-      :today="todayProgress.today"
-    />
+    <day-progress-bar :yesterday="todayProgress.yesterday" :today="todayProgress.today" />
 
     <div class="interval-toggle">
-      <button
-        v-for="interval in intervals"
-        :key="interval"
-        :class="{ active: speedInterval === interval }"
-        @click="setDateInterval(interval)"
-      >
+      <button v-for="interval in intervals" :key="interval" :class="{ active: speedInterval === interval }"
+        @click="setDateInterval(interval)">
         {{ interval }}
       </button>
     </div>
@@ -122,10 +127,27 @@ async function setDateInterval(interval: Interval) {
       </Transition>
     </div>
 
+    <div class="vert-line"></div>
+
+    <div class="kilometrs-info">
+      <div class="speed-row speed-header">
+        <h3>Пройдено</h3>
+        <h3>Километры</h3>
+      </div>
+
+      <Transition name="fade" mode="out-in">
+        <div v-if="isSwitch" class="speed-row speed-body">
+          <h3>{{ speedInterval }}</h3>
+          <span>{{ distanceData[speedInterval] }} км</span>
+        </div>
+      </Transition>
+    </div>
+
     <!-- даты оставлены как есть (по твоей логике), но без ошибок -->
-    <WayChart :wayTraveled="weekTravel" title="Неделя" data="17.11.2025 - 23.11.2025" />
-    <WayChart :wayTraveled="monthTravel" title="Месяц" data="Ноябрь 2025" />
-    <WayChart :wayTraveled="yearTravel" title="Год" data="2025" />
+    <WayChart :wayTraveled="weekTravel" title="Неделя" />
+    <WayChart :wayTraveled="monthTravel" title="Месяц" />
+    <WayChart :wayTraveled="yearTravel" title="Год" />
+    <WayChart :wayTraveled="yearsTravel" title="Года" />
   </div>
 </template>
 
@@ -173,7 +195,8 @@ async function setDateInterval(interval: Interval) {
 }
 
 /* ------------------ БЛОК СКОРОСТИ ------------------ */
-.speed-info {
+
+@mixin info-mixin {
   width: 100%;
   max-width: 600px;
   background: var(--card-bg);
@@ -182,6 +205,14 @@ async function setDateInterval(interval: Interval) {
   padding: 8px;
   font-family: 'Montserrat', sans-serif;
   color: var(--text);
+}
+
+.speed-info {
+  @include info-mixin;
+}
+
+.kilometrs-info {
+  @include info-mixin;
 }
 
 .speed-row {
@@ -245,5 +276,12 @@ async function setDateInterval(interval: Interval) {
   background: var(--accent);
   color: white;
   border-color: var(--accent);
+}
+.vert-line {
+  height: 40px;
+  width: 3px;
+  background: var(--divider);
+  margin: 0 10px;
+  opacity: 0.7;
 }
 </style>

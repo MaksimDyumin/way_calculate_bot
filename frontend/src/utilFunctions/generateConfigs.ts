@@ -1,4 +1,4 @@
-import type { Theme } from "@/global.types";
+import type { IntervalTravelTypes, Theme } from "@/global.types";
 
 export function generateWeekConfig(wayTraveled: number[], type?: string) {
     const daysCount = wayTraveled.length;
@@ -49,11 +49,18 @@ export function generateWeekConfig(wayTraveled: number[], type?: string) {
     return { chartData, options };
 }
 
-export function generateWeekBarConfig(wayTraveled: number[] | null, type?: string, theme?: Theme) {
+export function generateWeekBarConfig(wayTraveled: IntervalTravelTypes | null, type?: string, theme?: Theme) {
     if (wayTraveled === null) return;
         
-    const daysCount = wayTraveled.length;
+    const daysCount = wayTraveled.data.length;
     let labels = Array.from({ length: daysCount }, (_, i) => `${i + 1}`);
+    if ('years' in wayTraveled && type === 'Года') {
+        labels = Array.from({ length: daysCount }, (_, i) => `${wayTraveled.years[i]}`);
+    } else {
+        labels = Array.from({ length: daysCount }, (_, i) => `${i + 1}`);
+    }
+
+
     if (type === 'Неделя') {
         labels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
     }
@@ -70,9 +77,9 @@ export function generateWeekBarConfig(wayTraveled: number[] | null, type?: strin
     }
 
     // Генерируем цвета для каждого бара
-    const barColors = wayTraveled.map((distance, index) => {
+    const barColors = wayTraveled.data.map((distance, index) => {
         if (index === 0) return 'green';
-        const prev = wayTraveled[index - 1] ?? 0;
+        const prev = wayTraveled.data[index - 1] ?? 0;
         return distance > prev ? 'green' : 'red';
     });
 
@@ -81,7 +88,7 @@ export function generateWeekBarConfig(wayTraveled: number[] | null, type?: strin
         datasets: [
             {
                 label: 'Км',
-                data: wayTraveled,
+                data: wayTraveled.data,
                 backgroundColor: barColors, // цвет каждого бара
                 borderColor: '#f4c542',
                 borderWidth: 2

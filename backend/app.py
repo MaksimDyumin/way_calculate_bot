@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 import sqlite3
+from flask_cors import CORS
 from datetime import datetime, date, timedelta
 import math
 
@@ -19,9 +19,9 @@ from constants import (
 
 DB_PATH = "travel.db"
 
-app = Flask(__name__)
-cors = CORS(app, resources={r"*": {"origins": ["http://localhost:5173", "http://localhost:3000"]}})
 
+app = Flask(__name__)
+CORS(app, resources={r"*": {"origins": "http://localhost:5173"}})
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -53,8 +53,7 @@ def init_db():
 
 
 def parse_iso(ts_str):
-    # datetime.fromisoformat умеет разбирать строки вида
-    # "2024-11-20T11:24:00.449+01:00"
+    # Разбирает ISO-строку, например "2024-11-20T11:24:00.449+01:00"
     return datetime.fromisoformat(ts_str)
 
 
@@ -105,13 +104,7 @@ def is_near_any(lat, lon, locations, radius_m):
 
 def is_scooter_segment(start_lat, start_lon, end_lat, end_lon):
     """
-    2 группа правил (электросамокат):
-
-    Если:
-      - начало рядом с A, конец рядом с B
-      - или начало рядом с B, конец рядом с A
-      - или любые поездки между парковкой и A/B (в обе стороны)
-      - или парковка -> парковка
+    2 группа правил (электросамокат).
     """
     a_lat, a_lon = SCOOTER_A["lat"], SCOOTER_A["lon"]
     b_lat, b_lon = SCOOTER_B["lat"], SCOOTER_B["lon"]
@@ -151,10 +144,7 @@ def is_scooter_segment(start_lat, start_lon, end_lat, end_lon):
 
 def is_bus_segment(start_lat, start_lon, end_lat, end_lon):
     """
-    1 группа правил (автобус):
-
-    Если начало и конец маршрута рядом с автобусными остановками.
-    Пока BUS_STOPS пустой — всегда False, но логика готова.
+    1 группа правил (автобус).
     """
     if not BUS_STOPS:
         return False
@@ -167,39 +157,31 @@ def is_bus_segment(start_lat, start_lon, end_lat, end_lon):
 def classify_activity(raw_type, speed_kmh, start_lat, start_lon, end_lat, end_lon):
     """
     Применяем правила:
-
-    1) Если сегмент подходит под электросамокат — ставим "e-scooter".
-    2) Если начало/конец у автобусных остановок — "in bus".
-    3) Если скорость 10–25 км/ч и начало/конец рядом с
-       одной из BIKE_PRIORITY_LOCATIONS — "cycling".
-    4) Иначе оставляем исходный тип.
+      - самокат
+      - автобус
+      - велосипед (в приоритетных точках + по скорости)
+      - иначе как есть.
     """
-    # Если не смогли распарсить координаты — оставляем как было
     if start_lat is None or start_lon is None or end_lat is None or end_lon is None:
         return raw_type or "unknown"
 
-    # 2 группа: электросамокат
     if is_scooter_segment(start_lat, start_lon, end_lat, end_lon):
         return "e-scooter"
 
-    # 1 группа: автобус
     if is_bus_segment(start_lat, start_lon, end_lat, end_lon):
         return "in bus"
 
-    # 1 группа: велосипед с приоритетом в определённых точках
     if BIKE_SPEED_MIN_KMH <= speed_kmh <= BIKE_SPEED_MAX_KMH:
         if is_near_any(start_lat, start_lon, BIKE_PRIORITY_LOCATIONS, BIKE_RADIUS_M) or \
            is_near_any(end_lat, end_lon, BIKE_PRIORITY_LOCATIONS, BIKE_RADIUS_M):
             return "cycling"
 
-    # иначе оставляем как есть
     return raw_type or "unknown"
 
 
 def event_to_row(ev):
     """
-    Конвертирует один объект из location-history.json
-    в строку для БД или возвращает None, если сегмент не подходит.
+    Один объект из location-history.json -> строка для БД.
     """
     if "activity" not in ev:
         return None
@@ -226,7 +208,6 @@ def event_to_row(ev):
 
     speed_kmh = (dist_m / 1000.0) / (duration_s / 3600.0)
 
-    # координаты начала/конца маршрута
     start_geo = ev["activity"].get("start")
     end_geo = ev["activity"].get("end")
     start_lat, start_lon = parse_geo(start_geo)
@@ -245,7 +226,6 @@ def event_to_row(ev):
 
     start_date = start_dt.date().isoformat()
 
-    # Порядок полей соответствует INSERT ниже
     return (
         ev["startTime"],
         ev["endTime"],
@@ -257,21 +237,16 @@ def event_to_row(ev):
     )
 
 
+# ---------- Агрегации с учётом валидных скоростей ----------
+
 def aggregate_by_date(rows):
     """
-    rows: iterable sqlite3.Row с колонками:
-      start_date, distance_m, duration_s, speed_kmh
-
-    Возвращает dict:
-      date -> {
-          "dist_m_total": суммарная дистанция (для километража),
-          "dist_m_speed": суммарная дистанция только по "валидным" скоростям,
-          "dur_s_speed": суммарное время только по "валидным" скоростям,
-          "max_speed": макс. скорость по "валидным" скоростям
-      }
-
-    "Валидные" скорости:
-      BIKE_SPEED_MIN_KMH <= speed_kmh <= BIKE_SPEED_MAX_KMH
+    date -> {
+      dist_m_total  — вся дистанция,
+      dist_m_speed  — дистанция только по валидным скоростям,
+      dur_s_speed   — длительность только по валидным,
+      max_speed     — макс скорость по валидным
+    }
     """
     result = {}
     for r in rows:
@@ -290,10 +265,10 @@ def aggregate_by_date(rows):
             }
             result[d] = info
 
-        # Дистанция всегда учитывается
+        # Дистанция для километража — всегда
         info["dist_m_total"] += dist_m
 
-        # Для скоростей учитываем только "валидные" сегменты
+        # Скорости — только если в диапазоне велосипеда
         if BIKE_SPEED_MIN_KMH <= speed <= BIKE_SPEED_MAX_KMH:
             info["dist_m_speed"] += dist_m
             info["dur_s_speed"] += dur_s
@@ -305,9 +280,7 @@ def aggregate_by_date(rows):
 
 def aggregate_by_month(rows):
     """
-    rows: iterable sqlite3.Row
-    Возвращает dict:
-      (year, month) -> { dist_m_total, dist_m_speed, dur_s_speed, max_speed }
+    (year, month) -> агрегаты как выше.
     """
     result = {}
     for r in rows:
@@ -340,9 +313,7 @@ def aggregate_by_month(rows):
 
 def aggregate_by_year(rows):
     """
-    rows: iterable sqlite3.Row
-    Возвращает dict:
-      year -> { dist_m_total, dist_m_speed, dur_s_speed, max_speed }
+    year -> агрегаты как выше.
     """
     result = {}
     for r in rows:
@@ -373,19 +344,18 @@ def aggregate_by_year(rows):
     return result
 
 
+# ---------- API: импорт ----------
+
 @app.route("/import", methods=["POST"])
 def import_location_history():
     """
-    Принимает JSON такого же вида, как твой location-history.json
-    (массив объектов), извлекает из него activity-сегменты
-    и складывает их в SQLite. Повторяющиеся сегменты не дублируются
-    благодаря UNIQUE + INSERT OR IGNORE.
+    Принимает JSON как location-history.json
+    и складывает сегменты в SQLite.
     """
     data = request.get_json(force=True, silent=True)
     if data is None:
         return jsonify({"error": "Expected JSON body"}), 400
 
-    # Если прилетит объект - пробуем вытащить список из типичных ключей
     if isinstance(data, dict):
         if "events" in data:
             data = data["events"]
@@ -432,15 +402,12 @@ def import_location_history():
     )
 
 
+# ---------- API: статистика ----------
+
 @app.route("/stats", methods=["GET"])
 def get_stats():
     """
-    Возвращает агрегированную статистику ТОЛЬКО по велосипеду (activity_type='cycling')
-    в формате, который ты описал.
-
-    Параметры:
-      ?date=YYYY-MM-DD (опционально) — базовый день.
-      Если не задан, берётся сегодняшний date.today().
+    Возвращает статистику по велосипеду (activity_type='cycling').
     """
     date_param = request.args.get("date")
     if date_param:
@@ -453,11 +420,11 @@ def get_stats():
 
     yesterday = base_date - timedelta(days=1)
 
-    # Неделя: с понедельника по воскресенье, в которую попадает base_date
+    # Неделя (понедельник–воскресенье)
     week_start = base_date - timedelta(days=base_date.weekday())
     week_end = week_start + timedelta(days=6)
 
-    # Месяц: первый и последний день месяца base_date
+    # Месяц
     month_start = base_date.replace(day=1)
     if base_date.month == 12:
         next_month_start = base_date.replace(year=base_date.year + 1, month=1, day=1)
@@ -465,15 +432,14 @@ def get_stats():
         next_month_start = base_date.replace(month=base_date.month + 1, day=1)
     month_end = next_month_start - timedelta(days=1)
 
-    # Год: 1 января — 31 декабря года base_date
+    # Год
     year_start = date(base_date.year, 1, 1)
     year_end = date(base_date.year, 12, 31)
 
     conn = get_db()
     cur = conn.cursor()
 
-    # ВАЖНО: берём даты с min(yesterday, week_start),
-    # чтобы week покрывала ВСЮ неделю
+    # Берём минимум для day/week, чтобы неделя покрывалась полностью
     query_start = min(yesterday, week_start)
 
     # Для day_progress / week
@@ -536,8 +502,8 @@ def get_stats():
         return round(info["dist_m_total"] / 1000.0, 2)
 
     day_progress = {
-        "yesterday": km_for(yesterday),   # только вел
-        "today": km_for(base_date),       # только вел
+        "yesterday": km_for(yesterday),
+        "today": km_for(base_date),
     }
 
     # ---------- week_travel ----------
@@ -546,14 +512,13 @@ def get_stats():
         round(by_date.get(d, {"dist_m_total": 0})["dist_m_total"] / 1000.0, 2)
         for d in week_days
     ]
-
     week_travel = {
         "data": week_data,
         "start_week_data": week_start.isoformat(),
         "end_week_data": week_end.isoformat(),
     }
 
-    # ---------- mounth_travel (по дням месяца) ----------
+    # ---------- mounth_travel ----------
     days_in_month = (month_end - month_start).days + 1
     month_days = [month_start + timedelta(days=i) for i in range(days_in_month)]
     month_data = [
@@ -566,7 +531,7 @@ def get_stats():
         "end_mounth_data": month_end.isoformat(),
     }
 
-    # ---------- year_travel (по месяцам года) ----------
+    # ---------- year_travel ----------
     year_month_data = []
     for m in range(1, 13):
         info = by_month_for_year.get((base_date.year, m))
@@ -577,18 +542,17 @@ def get_stats():
 
     year_travel = {
         "data": year_month_data,
-        "start_mounth_data": year_start.isoformat(),
-        "end_mounth_data": year_end.isoformat(),
+        "start_year_data": year_start.isoformat(),
+        "end_year_data": year_end.isoformat(),
     }
 
-    # ---------- average_max_speed ----------
+    # ---------- массивы скоростей для графиков ----------
 
     def avg_max_arrays_for_days(dates_list, agg_dict):
         avg_list = []
         max_list = []
         for d in dates_list:
             info = agg_dict.get(d)
-            # Для скоростей используем только dist_m_speed / dur_s_speed
             if not info or info["dur_s_speed"] <= 0:
                 avg_list.append(0.0)
                 max_list.append(0.0)
@@ -604,144 +568,262 @@ def get_stats():
                     max_list.append(round(info["max_speed"], 2))
         return avg_list, max_list
 
-    # today: один элемент в массиве (средняя и макс скорость за день) только по валидным вело-сегментам
+    # today — сразу как скаляр
     today_info = by_date.get(base_date)
     if today_info and today_info["dur_s_speed"] > 0:
         dist_km = today_info["dist_m_speed"] / 1000.0
         hours = today_info["dur_s_speed"] / 3600.0
         if hours > 0:
-            today_avg = dist_km / hours
-            today_avg_arr = [round(today_avg, 2)]
-            today_max_arr = [round(today_info["max_speed"], 2)]
+            today_avg_val = round(dist_km / hours, 2)
+            today_max_val = round(today_info["max_speed"], 2)
         else:
-            today_avg_arr = [0.0]
-            today_max_arr = [0.0]
+            today_avg_val = 0.0
+            today_max_val = 0.0
     else:
-        today_avg_arr = [0.0]
-        today_max_arr = [0.0]
+        today_avg_val = 0.0
+        today_max_val = 0.0
 
-    # week: по дням недели (7 значений)
-    week_avg_arr, week_max_arr = avg_max_arrays_for_days(week_days, by_date)
-
-    # mouth: по дням месяца
-    mouth_avg_arr, mouth_max_arr = avg_max_arrays_for_days(
+    # week / month / year — массивы значений для графиков
+    week_avg_values, week_max_values = avg_max_arrays_for_days(week_days, by_date)
+    mouth_avg_values, mouth_max_values = avg_max_arrays_for_days(
         month_days, by_date_for_month
     )
 
-    # year: по месяцам (только до текущего месяца)
     max_month = base_date.month
-    year_avg_arr = []
-    year_max_arr = []
-
+    year_avg_values = []
+    year_max_values = []
     for m in range(1, max_month + 1):
         info = by_month_for_year.get((base_date.year, m))
-        label = f"{base_date.year}-{m:02d}"
-
         if not info or info["dur_s_speed"] <= 0:
-            print(f"[DEBUG][month] {label}: NO VALID SPEED SEGMENTS")
-            year_avg_arr.append(0.0)
-            year_max_arr.append(0.0)
+            year_avg_values.append(0.0)
+            year_max_values.append(0.0)
             continue
 
         dist_km = info["dist_m_speed"] / 1000.0
         hours = info["dur_s_speed"] / 3600.0
         if hours <= 0:
-            print(f"[DEBUG][month] {label}: INVALID HOURS")
-            year_avg_arr.append(0.0)
-            year_max_arr.append(0.0)
+            year_avg_values.append(0.0)
+            year_max_values.append(0.0)
             continue
 
         avg_speed = dist_km / hours
-        max_speed = info["max_speed"]
+        year_avg_values.append(round(avg_speed, 2))
+        year_max_values.append(round(info["max_speed"], 2))
 
-        print(
-            f"[DEBUG][month] {label}: "
-            f"dist_km={dist_km:.2f}, hours={hours:.2f}, "
-            f"avg={avg_speed:.2f}, max={max_speed:.2f}"
-        )
-
-        year_avg_arr.append(round(avg_speed, 2))
-        year_max_arr.append(round(max_speed, 2))
-
-    # years: по годам с данными по велу, в хронологическом порядке
+    # По годам
     all_years_sorted = sorted(by_year_all.keys())
-    years_avg_arr = []
-    years_max_arr = []
-    valid_infos_for_alltime = []
-
-    for y in all_years_sorted:
+    years_labels = all_years_sorted
+    years_avg_values = []
+    years_max_values = []
+    for y in years_labels:
         info = by_year_all[y]
         if info["dur_s_speed"] <= 0:
-            print(f"[DEBUG][year] {y}: NO VALID SPEED SEGMENTS")
-            years_avg_arr.append(0.0)
-            years_max_arr.append(0.0)
+            years_avg_values.append(0.0)
+            years_max_values.append(0.0)
             continue
 
         dist_km = info["dist_m_speed"] / 1000.0
         hours = info["dur_s_speed"] / 3600.0
         if hours <= 0:
-            print(f"[DEBUG][year] {y}: INVALID HOURS")
-            years_avg_arr.append(0.0)
-            years_max_arr.append(0.0)
+            years_avg_values.append(0.0)
+            years_max_values.append(0.0)
             continue
 
         avg_speed = dist_km / hours
-        max_speed = info["max_speed"]
+        years_avg_values.append(round(avg_speed, 2))
+        years_max_values.append(round(info["max_speed"], 2))
 
-        print(
-            f"[DEBUG][year] {y}: dist_km={dist_km:.2f}, "
-            f"hours={hours:.2f}, avg={avg_speed:.2f}, max={max_speed:.2f}"
-        )
+    # ---------- агрегированные средние по периодам (одиночные значения) ----------
 
-        years_avg_arr.append(round(avg_speed, 2))
-        years_max_arr.append(round(max_speed, 2))
-        valid_infos_for_alltime.append(info)
+    # week
+    week_total_dist_m = 0.0
+    week_dist_m_speed = 0.0
+    week_dur_s_speed = 0.0
+    week_max_speed_val = 0.0
+    for d in week_days:
+        info = by_date.get(d)
+        if not info:
+            continue
+        week_total_dist_m += info["dist_m_total"]
+        week_dist_m_speed += info["dist_m_speed"]
+        week_dur_s_speed += info["dur_s_speed"]
+        if info["max_speed"] > week_max_speed_val:
+            week_max_speed_val = info["max_speed"]
 
-    # alltime: одно значение за всё время (по валидным сегментам)
-    if not valid_infos_for_alltime:
-        alltime_avg_arr = [0.0]
-        alltime_max_arr = [0.0]
+    if week_dur_s_speed > 0:
+        week_avg_speed_val = (week_dist_m_speed / 1000.0) / (week_dur_s_speed / 3600.0)
     else:
-        total_dist_m = sum(i["dist_m_speed"] for i in valid_infos_for_alltime)
-        total_dur_s = sum(i["dur_s_speed"] for i in valid_infos_for_alltime)
+        week_avg_speed_val = 0.0
+        week_max_speed_val = 0.0
 
-        if total_dur_s <= 0:
-            alltime_avg_arr = [0.0]
-            alltime_max_arr = [0.0]
-        else:
-            total_dist_km = total_dist_m / 1000.0
-            total_hours = total_dur_s / 3600.0
-            alltime_avg = total_dist_km / total_hours
-            alltime_max = max(i["max_speed"] for i in valid_infos_for_alltime)
+    # month
+    month_total_dist_m = 0.0
+    month_dist_m_speed = 0.0
+    month_dur_s_speed = 0.0
+    month_max_speed_val = 0.0
+    for d in month_days:
+        info = by_date_for_month.get(d)
+        if not info:
+            continue
+        month_total_dist_m += info["dist_m_total"]
+        month_dist_m_speed += info["dist_m_speed"]
+        month_dur_s_speed += info["dur_s_speed"]
+        if info["max_speed"] > month_max_speed_val:
+            month_max_speed_val = info["max_speed"]
 
-            alltime_avg_arr = [round(alltime_avg, 2)]
-            alltime_max_arr = [round(alltime_max, 2)]
+    if month_dur_s_speed > 0:
+        month_avg_speed_val = (month_dist_m_speed / 1000.0) / (
+            month_dur_s_speed / 3600.0
+        )
+    else:
+        month_avg_speed_val = 0.0
+        month_max_speed_val = 0.0
+
+    # year (текущий)
+    year_total_dist_m = 0.0
+    year_dist_m_speed = 0.0
+    year_dur_s_speed = 0.0
+    year_max_speed_val = 0.0
+    for m in range(1, max_month + 1):
+        info = by_month_for_year.get((base_date.year, m))
+        if not info:
+            continue
+        year_total_dist_m += info["dist_m_total"]
+        year_dist_m_speed += info["dist_m_speed"]
+        year_dur_s_speed += info["dur_s_speed"]
+        if info["max_speed"] > year_max_speed_val:
+            year_max_speed_val = info["max_speed"]
+
+    if year_dur_s_speed > 0:
+        year_avg_speed_val = (year_dist_m_speed / 1000.0) / (
+            year_dur_s_speed / 3600.0
+        )
+    else:
+        year_avg_speed_val = 0.0
+        year_max_speed_val = 0.0
+
+    # alltime
+    alltime_total_dist_m = 0.0
+    alltime_dist_m_speed = 0.0
+    alltime_dur_s_speed = 0.0
+    alltime_max_speed_val = 0.0
+    for info in by_year_all.values():
+        alltime_total_dist_m += info["dist_m_total"]
+        alltime_dist_m_speed += info["dist_m_speed"]
+        alltime_dur_s_speed += info["dur_s_speed"]
+        if info["max_speed"] > alltime_max_speed_val:
+            alltime_max_speed_val = info["max_speed"]
+
+    if alltime_dur_s_speed > 0:
+        alltime_avg_speed_val = (alltime_dist_m_speed / 1000.0) / (
+            alltime_dur_s_speed / 3600.0
+        )
+    else:
+        alltime_avg_speed_val = 0.0
+        alltime_max_speed_val = 0.0
+
+    # ---------- summary по периодам ----------
+    summary_today = {
+        "distance_km": round(
+            by_date.get(base_date, {"dist_m_total": 0})["dist_m_total"] / 1000.0, 2
+        )
+        if base_date in by_date
+        else 0.0,
+        "average_speed": round(today_avg_val, 2),
+        "max_speed": round(today_max_val, 2),
+    }
+
+    summary_week = {
+        "distance_km": round(week_total_dist_m / 1000.0, 2),
+        "average_speed": round(week_avg_speed_val, 2),
+        "max_speed": round(week_max_speed_val, 2),
+    }
+
+    summary_month = {
+        "distance_km": round(month_total_dist_m / 1000.0, 2),
+        "average_speed": round(month_avg_speed_val, 2),
+        "max_speed": round(month_max_speed_val, 2),
+    }
+
+    summary_year = {
+        "distance_km": round(year_total_dist_m / 1000.0, 2),
+        "average_speed": round(year_avg_speed_val, 2),
+        "max_speed": round(year_max_speed_val, 2),
+    }
+
+    summary_alltime = {
+        "distance_km": round(alltime_total_dist_m / 1000.0, 2),
+        "average_speed": round(alltime_avg_speed_val, 2),
+        "max_speed": round(alltime_max_speed_val, 2),
+    }
+
+    # ---------- average_max_speed (новый формат) ----------
 
     average_max_speed = {
         "today": {
-            "average": today_avg_arr,
-            "max": today_max_arr,
+            "average": summary_today["average_speed"],   # double
+            "max": summary_today["max_speed"],           # double
         },
         "week": {
-            "average": week_avg_arr,
-            "max": week_max_arr,
+            "average": summary_week["average_speed"],
+            "max": summary_week["max_speed"],
+            "average_values": week_avg_values,           # массив по дням недели
+            "max_values": week_max_values,
         },
         "mouth": {
-            "average": mouth_avg_arr,
-            "max": mouth_max_arr,
+            "average": summary_month["average_speed"],
+            "max": summary_month["max_speed"],
+            "average_values": mouth_avg_values,          # массив по дням месяца
+            "max_values": mouth_max_values,
         },
         "year": {
-            "average": year_avg_arr,
-            "max": year_max_arr,
+            "average": summary_year["average_speed"],
+            "max": summary_year["max_speed"],
+            "average_values": year_avg_values,           # массив по месяцам
+            "max_values": year_max_values,
         },
         "years": {
-            "average": years_avg_arr,
-            "max": years_max_arr,
+            "years": years_labels,                       # список годов
+            "average_values": years_avg_values,          # по годам
+            "max_values": years_max_values,
         },
-        "all_time": {
-            "average": alltime_avg_arr,
-            "max": alltime_max_arr,
+        "alltime": {
+            "average": summary_alltime["average_speed"],
+            "max": summary_alltime["max_speed"],
         },
+    }
+
+    # ---------- суммы километров за период ----------
+
+    week_travel_total = round(sum(week_data), 2)
+    mounth_travel_total = round(sum(month_data), 2)
+    year_travel_total = round(sum(year_month_data), 2)
+
+    week_travel["total"] = week_travel_total
+    mounth_travel["total"] = mounth_travel_total
+    year_travel["total"] = year_travel_total
+
+    # ---------- years_travel (км по годам + суммарно) ----------
+
+    years_travel_years = years_labels
+    years_travel_data = [
+        round(by_year_all[y]["dist_m_total"] / 1000.0, 2) for y in years_travel_years
+    ]
+    years_travel_total = round(sum(years_travel_data), 2)
+
+    years_travel = {
+        "years": years_travel_years,
+        "data": years_travel_data,
+        "total": years_travel_total,
+    }
+
+    # ---------- summary в одном месте ----------
+    summary = {
+        "today": summary_today,
+        "week": summary_week,
+        "month": summary_month,
+        "year": summary_year,
+        "alltime": summary_alltime,
     }
 
     response = {
@@ -749,7 +831,9 @@ def get_stats():
         "week_travel": week_travel,
         "mounth_travel": mounth_travel,
         "year_travel": year_travel,
+        "years_travel": years_travel,
         "average_max_speed": average_max_speed,
+        "summary": summary,
     }
 
     return jsonify(response)

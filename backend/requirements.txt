@@ -1,3 +1,4 @@
-fastapi
+flask
 uvicorn[standard]
 python-dotenv
+flask_cors
