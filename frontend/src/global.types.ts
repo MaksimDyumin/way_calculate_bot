@@ -19,7 +19,7 @@ export type AverageMaxSpeed = {
         average: number[],
         max: number[]
     },
-    mouth: {
+    month: {
         average: number[],
         max: number[]
     },

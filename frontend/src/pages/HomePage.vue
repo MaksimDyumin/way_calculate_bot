@@ -1,110 +1,107 @@
 <script setup lang="ts">
 import DayProgressBar from '@/components/DayProgressBar.vue';
 import WayChart from '@/components/WayChart.vue';
-import { ref, onMounted, computed, reactive } from 'vue';
+import { ref, onMounted, computed, nextTick } from 'vue';
 import type { Ref } from 'vue';
 import type { Interval } from '@/pages/pages.types.ts';
 import { useWayTravelStore } from '@/stores/wayTravel';
 import type { AverageMaxSpeed, DayProgress } from '@/global.types';
 
-const loadingL = ref(false);
-const wayTraveledStore = useWayTravelStore()
+const isLoading = ref(false);
+const wayTraveledStore = useWayTravelStore();
 
-const weekTravel: Ref<number[]> = ref([0])
-const mounthTravel: Ref<number[]> = ref([0])
-const yearTravel: Ref<number[]> = ref([0])
-const todayProgress: Ref<DayProgress> = ref({ yesterday: 0, today: 0 })
-const averageMaxSpeed: Ref<AverageMaxSpeed> = ref({
-  today: {
-    average: [55],
-    max: [55]
-  },
-  week: {
-    average: [55],
-    max: [55]
-  },
-  mouth: {
-    average: [55],
-    max: [55]
-  },
-  year: {
-    average: [55],
-    max: [55]
-  },
-  all_time: {
-    average: [55],
-    max: [55]
-  },
-})
+// --- Исправленные названия
+const weekTravel = ref<number[]>([]);
+const monthTravel = ref<number[]>([]);
+const yearTravel = ref<number[]>([]);
+const todayProgress = ref<DayProgress>({ yesterday: 0, today: 0 });
+
+// --- Исправлен ключ month вместо mouth
+const averageMaxSpeed = ref<AverageMaxSpeed>({
+  today: { average: [55], max: [55] },
+  week: { average: [55], max: [55] },
+  month: { average: [55], max: [55] },
+  year: { average: [55], max: [55] },
+  all_time: { average: [55], max: [55] },
+});
+
+// --- чистая функция среднего
+const avg = (arr: number[]) =>
+  arr?.length ? Number((arr.reduce((p, c) => p + c, 0) / arr.length).toFixed(1)) : 0;
+
+// --- улучшена структура расчётов speedData
 const speedData = computed(() => {
   const d = averageMaxSpeed.value;
 
-  const avg = (arr: number[]) =>{
-    return arr && arr.length
-      ? Number((arr.reduce((p, c) => p + c, 0) / arr.length).toFixed(1))
-      : 0;
-  }
-    
-
   return {
-    Сегодня: { 
-      average: avg(d?.today?.average ?? []),
-      max: avg(d?.today?.max ?? [])
+    Сегодня: {
+      average: avg(d.today.average),
+      max: avg(d.today.max)
     },
-    Неделя: { 
-      average: avg(d?.week?.average ?? []),
-      max: avg(d?.week?.max ?? [])
+    Неделя: {
+      average: avg(d.week.average),
+      max: avg(d.week.max)
     },
-    Месяц: { 
-      average: avg(d?.mouth?.average ?? []),
-      max: avg(d?.mouth?.max ?? [])
+    Месяц: {
+      average: avg(d.month.average),
+      max: avg(d.month.max)
     },
-    Год: { 
-      average: avg(d?.year?.average ?? []),
-      max: avg(d?.year?.max ?? [])
+    Год: {
+      average: avg(d.year.average),
+      max: avg(d.year.max)
     },
     'Все время': {
-      average: avg(d?.all_time?.average ?? []),
-      max: avg(d?.all_time?.max ?? [])
-    },
-  }
-})
+      average: avg(d.all_time.average),
+      max: avg(d.all_time.max)
+    }
+  };
+});
 
-
+// --- загрузка данных
 onMounted(async () => {
-  await wayTraveledStore.getDateTravelInfo()
+  await wayTraveledStore.getDateTravelInfo();
 
-  weekTravel.value = wayTraveledStore.travelData.week_travel.data
-  mounthTravel.value = wayTraveledStore.travelData.mounth_travel.data
-  yearTravel.value = wayTraveledStore.travelData.year_travel.data
-  todayProgress.value = wayTraveledStore.travelData.day_progress
-  averageMaxSpeed.value = wayTraveledStore.travelData.average_max_speed
-  console.log(averageMaxSpeed.value)
+  const data = wayTraveledStore.travelData;
 
-  loadingL.value = true;
-})
+  weekTravel.value = data.week_travel.data;
+  monthTravel.value = data.month_travel.data;
+  yearTravel.value = data.year_travel.data;
+  todayProgress.value = data.day_progress;
+  averageMaxSpeed.value = data.average_max_speed;
 
+  isLoading.value = true;
+});
+
+// --- переключатель интервала
 const intervals: Interval[] = ['Сегодня', 'Неделя', 'Месяц', 'Год', 'Все время'];
 const speedInterval: Ref<Interval> = ref('Сегодня');
-const isSwitch: Ref<boolean> = ref(true);
+const isSwitch = ref(true);
 
-// --- Функция смены интервала
 async function setDateInterval(interval: Interval) {
   isSwitch.value = false;
   speedInterval.value = interval;
-  await new Promise((res) => setTimeout(res, 100));
+
+  // Вместо setTimeout использован nextTick — вариант более корректный
+  await nextTick();
+
   isSwitch.value = true;
 }
-
 </script>
 
 <template>
-  <div v-if="loadingL" class="home-container">
-    <day-progress-bar :yesterday="todayProgress.yesterday" :today="todayProgress.today" />
+  <div v-if="isLoading" class="home-container">
+    <day-progress-bar
+      :yesterday="todayProgress.yesterday"
+      :today="todayProgress.today"
+    />
 
     <div class="interval-toggle">
-      <button v-for="interval in intervals" :key="interval" :class="{ active: speedInterval === interval }"
-        @click="setDateInterval(interval)">
+      <button
+        v-for="interval in intervals"
+        :key="interval"
+        :class="{ active: speedInterval === interval }"
+        @click="setDateInterval(interval)"
+      >
         {{ interval }}
       </button>
     </div>
@@ -119,14 +116,15 @@ async function setDateInterval(interval: Interval) {
       <Transition name="fade" mode="out-in">
         <div v-if="isSwitch" class="speed-row speed-body">
           <h3>{{ speedInterval }}</h3>
-          <span>{{ speedData[speedInterval]?.average }} км/ч</span>
-          <span>{{ speedData[speedInterval]?.max }} км/ч</span>
+          <span>{{ speedData[speedInterval].average }} км/ч</span>
+          <span>{{ speedData[speedInterval].max }} км/ч</span>
         </div>
       </Transition>
     </div>
 
+    <!-- даты оставлены как есть (по твоей логике), но без ошибок -->
     <WayChart :wayTraveled="weekTravel" title="Неделя" data="17.11.2025 - 23.11.2025" />
-    <WayChart :wayTraveled="mounthTravel" title="Месяц" data="Ноябрь 2025" />
+    <WayChart :wayTraveled="monthTravel" title="Месяц" data="Ноябрь 2025" />
     <WayChart :wayTraveled="yearTravel" title="Год" data="2025" />
   </div>
 </template>

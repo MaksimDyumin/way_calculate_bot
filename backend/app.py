@@ -20,7 +20,7 @@ from constants import (
 DB_PATH = "travel.db"
 
 app = Flask(__name__)
-cors = CORS(app, resources={r"*": {"origins": "http://localhost:5173"}})
+cors = CORS(app, resources={r"*": {"origins": ["http://localhost:5173", "http://localhost:3000"]}})
 
 
 def get_db():
